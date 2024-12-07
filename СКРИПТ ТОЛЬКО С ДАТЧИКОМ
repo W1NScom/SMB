@@ -1,0 +1,109 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+
+// Имя Wi-Fi сети, пароль и URL Google Script
+const char* ssid = "TP-Link_515A";
+const char* password = "21857638";
+const char* googleScriptURL = "https://script.google.com/macros/s/AKfycbz4BRYe3L_Lp4n5MEJ6RGi6cqMai5d26KRVPT9Pgw_dM3heIRa5og1ZW9i-CvMa8O9E/exec";
+const char* sheetName = "PS16";
+
+// Пины для подключения светодиодов и датчика
+const int sensorPin = 4;  // GPIO4 для датчика
+const int ledRedPin = 5;   // Красный светодиод
+const int ledGreenPin = 17; // Зеленый светодиод
+const int ledBluePin = 16;  // Синий светодиод
+
+// Переменные для хранения состояния датчика
+bool sensorState = HIGH;
+bool sensorPrevState = HIGH;
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.begin(ssid, password);
+
+  // Настройка пинов
+  pinMode(sensorPin, INPUT);
+  pinMode(ledRedPin, OUTPUT);
+  pinMode(ledGreenPin, OUTPUT);
+  pinMode(ledBluePin, OUTPUT);
+
+  digitalWrite(ledRedPin, LOW);
+  digitalWrite(ledGreenPin, LOW);
+  digitalWrite(ledBluePin, LOW);
+
+  Serial.println("Connecting to WiFi...");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+    digitalWrite(ledRedPin, HIGH); // Красный светодиод при отсутствии Wi-Fi
+  }
+
+  digitalWrite(ledRedPin, LOW);
+  digitalWrite(ledGreenPin, HIGH);
+  Serial.println("\nWiFi connected");
+}
+
+void loop() {
+  int currentSensorState = digitalRead(sensorPin);
+
+  // Проверка изменения состояния датчика
+  if (currentSensorState != sensorPrevState) {
+    Serial.print("Sensor state changed to: ");
+    Serial.println(currentSensorState);
+
+    if (currentSensorState == LOW) { // Например, при активации датчика
+      Serial.println("Sensor triggered! Sending data...");
+      sendData(1);  // Отправка данных при срабатывании датчика
+    } else {
+      Serial.println("Sensor deactivated!");
+    }
+    sensorPrevState = currentSensorState; // Обновляем состояние датчика
+  }
+
+  // Проверка состояния Wi-Fi
+  if (WiFi.status() != WL_CONNECTED) {
+    digitalWrite(ledGreenPin, LOW);
+    digitalWrite(ledRedPin, HIGH);
+    Serial.println("WiFi disconnected!");
+  } else {
+    digitalWrite(ledRedPin, LOW);
+    digitalWrite(ledGreenPin, HIGH);
+  }
+
+  delay(200); // Задержка для уменьшения нагрузки
+}
+
+// Отправка данных на Google Script
+void sendData(int sensorValue) {
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFiClientSecure client;
+    client.setInsecure(); // Отключение проверки сертификатов (требуется для Google Script)
+    HTTPClient http;
+
+    String url = String(googleScriptURL) + "?button=" + sensorValue + "&sheet=" + sheetName;
+    Serial.print("Sending data to URL: ");
+    Serial.println(url);
+
+    http.begin(client, url); 
+    int httpCode = http.GET();
+
+    if (httpCode > 0) {
+      Serial.print("HTTP Response code: ");
+      Serial.println(httpCode);
+      if (httpCode == HTTP_CODE_OK) {
+        String payload = http.getString();
+        Serial.println("Data sent successfully!");
+        Serial.println("Response: " + payload);
+      } else {
+        Serial.println("Failed to send data. HTTP error code: " + String(httpCode));
+      }
+    } else {
+      Serial.println("Error in HTTP request: " + http.errorToString(httpCode));
+    }
+
+    http.end(); // Завершаем HTTP соединение
+  } else {
+    Serial.println("Cannot send data. WiFi not connected!");
+  }
+}
