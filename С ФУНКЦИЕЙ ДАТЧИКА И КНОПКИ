@@ -5,8 +5,8 @@
 #include <WiFiClientSecure.h>
 
 // Wi-Fi настройки
-const char* ssid = "TP-Link_515A";
-const char* password = "21857638";
+const char* ssid = "MikroTik-05B057";
+const char* password = "77777778";
 
 // URL для таблиц
 const char* sensorGoogleScriptURL = "https://script.google.com/macros/s/AKfycbyhpuQywgOac2SxUUleQbGlNsON0-2R-mBcieuSK_YfWnvqlytpW2wEzVbk32bmd9k/exec";
