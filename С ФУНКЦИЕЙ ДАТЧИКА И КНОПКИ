@@ -9,18 +9,18 @@ const char* ssid = "TP-Link_515A";
 const char* password = "21857638";
 
 // URL для таблиц
-const char* sensorGoogleScriptURL = "https://script.google.com/macros/s/AKfycbz4BRYe3L_Lp4n5MEJ6RGi6cqMai5d26KRVPT9Pgw_dM3heIRa5og1ZW9i-CvMa8O9E/exec";
+const char* sensorGoogleScriptURL = "https://script.google.com/macros/s/AKfycbyhpuQywgOac2SxUUleQbGlNsON0-2R-mBcieuSK_YfWnvqlytpW2wEzVbk32bmd9k/exec";
 const char* buttonGoogleScriptURL = "https://script.google.com/macros/s/AKfycbwoQFseC5w0iiQ-XC6Afaq7DNAAOeLxQbgVdwJ_trLedQVGsK21RNMqTBIGaezW5GDX/exec";
 
 // Настройки для кнопки
 const int buttonPin = 16; // GPIO16
-const char* buttonColumn = "F"; // Колонка для записи данных кнопки
+const char* buttonColumn = "BB"; // Колонка для записи данных кнопки
 
 // Настройки для датчика
 const int sensorPin = 4;       // GPIO4
 const int ledRedPin = 5;       // GPIO5
 const int ledGreenPin = 17;    // GPIO17
-const char* sensorSheetName = "PS2"; // Лист для записи данных датчика
+const char* sensorSheetName = "PS13"; // Лист для записи данных датчика
 
 // Переменные для кнопки
 bool buttonState = HIGH;
@@ -142,7 +142,7 @@ void sendButtonData() {
 
   String sheetName = getMonthYearSheetName();
   int currentDay = getCurrentDay();
-  int row = currentDay + 1;
+  int row = currentDay + 3;
 
   String url = String(buttonGoogleScriptURL) + "?column=" + buttonColumn + "&row=" + row + "&sheet=" + sheetName;
   Serial.print("Requesting URL: ");
