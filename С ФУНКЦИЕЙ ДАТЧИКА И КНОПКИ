@@ -3,13 +3,14 @@
 #include <NTPClient.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <vector>
 
 // Wi-Fi настройки
-const char* ssid = "MikroTik-05B057";
-const char* password = "77777778";
+const char* ssid = "TP-Link_515A";
+const char* password = "21857638";
 
 // URL для таблиц
-const char* sensorGoogleScriptURL = "https://script.google.com/macros/s/AKfycbyhpuQywgOac2SxUUleQbGlNsON0-2R-mBcieuSK_YfWnvqlytpW2wEzVbk32bmd9k/exec";
+const char* sensorGoogleScriptURL = "https://script.google.com/macros/s/AKfycbxYNWKSfoAO6UJBgZEUSu1r-lvbFvAjqBrHRWuqCsut0Tn0czw8FfQNdsXMpWbq5vo1/exec";
 const char* buttonGoogleScriptURL = "https://script.google.com/macros/s/AKfycbwoQFseC5w0iiQ-XC6Afaq7DNAAOeLxQbgVdwJ_trLedQVGsK21RNMqTBIGaezW5GDX/exec";
 
 // Настройки для кнопки
@@ -20,7 +21,7 @@ const char* buttonColumn = "BB"; // Колонка для записи данн�
 const int sensorPin = 4;       // GPIO4
 const int ledRedPin = 5;       // GPIO5
 const int ledGreenPin = 17;    // GPIO17
-const char* sensorSheetName = "PS13"; // Лист для записи данных датчика
+const char* sensorSheetName = "PS15"; // Лист для записи данных датчика
 
 // Переменные для кнопки
 bool buttonState = HIGH;
@@ -36,6 +37,12 @@ const unsigned long debounceDelaySensor = 50;
 unsigned long lastSendTime = 0;
 const unsigned long sendDelay = 3000;
 
+// Буфер для хранения данных
+struct Data {
+  String url;
+};
+std::vector<Data> dataBuffer;
+
 // Настройка времени
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", 3600 * 3); // Часовой пояс GMT+3 (Мск)
@@ -46,6 +53,8 @@ int getCurrentDay();
 void sendButtonData();
 void sendSensorData(int sensorValue, int memoryStatus);
 String getWiFiStatus();
+void sendBufferedData();
+void blinkGreen();
 
 void setup() {
   Serial.begin(115200);
@@ -84,6 +93,9 @@ void setup() {
 
 void loop() {
   timeClient.update(); // Обновляем время
+
+  // Проверка и отправка данных из буфера
+  sendBufferedData();
 
   // === ОБРАБОТКА КНОПКИ ===
   int buttonReading = digitalRead(buttonPin);
@@ -148,15 +160,21 @@ void sendButtonData() {
   Serial.print("Requesting URL: ");
   Serial.println(url);
 
-  http.begin(client, url);
-  int httpCode = http.GET();
+  if (WiFi.status() == WL_CONNECTED) {
+    http.begin(client, url);
+    int httpCode = http.GET();
 
-  if (httpCode > 0) {
-    Serial.printf("HTTP Code: %d\n", httpCode);
+    if (httpCode > 0) {
+      Serial.printf("HTTP Code: %d\n", httpCode);
+    } else {
+      Serial.printf("Error on HTTP request: %s\n", http.errorToString(httpCode).c_str());
+      dataBuffer.push_back({url});
+    }
+    http.end();
   } else {
-    Serial.printf("Error on HTTP request: %s\n", http.errorToString(httpCode).c_str());
+    dataBuffer.push_back({url});
+    Serial.println("WiFi not connected. Data saved to buffer.");
   }
-  http.end();
 }
 
 // === ФУНКЦИИ ДАТЧИКА ===
@@ -166,21 +184,55 @@ void sendSensorData(int sensorValue, int memoryStatus) {
   HTTPClient http;
 
   String wifiStatus = getWiFiStatus();
+  String url = String(sensorGoogleScriptURL) + "?button=" + String(sensorValue) +
+               "&memory=" + String(memoryStatus) + "&wifiStatus=" + wifiStatus +
+               "&sheet=" + sensorSheetName;
 
-  String url = String(sensorGoogleScriptURL) + "?button=" + String(sensorValue) + "&memory=" + String(memoryStatus) +
-               "&wifiStatus=" + wifiStatus + "&sheet=" + sensorSheetName;
   Serial.print("Requesting URL: ");
   Serial.println(url);
 
-  http.begin(client, url);
-  int httpCode = http.GET();
+  if (WiFi.status() == WL_CONNECTED) {
+    http.begin(client, url);
+    int httpCode = http.GET();
 
-  if (httpCode > 0) {
-    Serial.printf("HTTP Code: %d\n", httpCode);
+    if (httpCode > 0) {
+      Serial.printf("HTTP Code: %d\n", httpCode);
+    } else {
+      Serial.printf("Error on HTTP request: %s\n", http.errorToString(httpCode).c_str());
+      dataBuffer.push_back({url});
+    }
+    http.end();
   } else {
-    Serial.printf("Error on HTTP request: %s\n", http.errorToString(httpCode).c_str());
+    dataBuffer.push_back({url});
+    Serial.println("WiFi not connected. Data saved to buffer.");
   }
-  http.end();
+}
+
+// === ОТПРАВКА ДАННЫХ ИЗ БУФЕРА ===
+void sendBufferedData() {
+  if (WiFi.status() == WL_CONNECTED && !dataBuffer.empty()) {
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+
+    for (size_t i = 0; i < dataBuffer.size(); i++) {
+      Serial.print("Resending data: ");
+      Serial.println(dataBuffer[i].url);
+
+      http.begin(client, dataBuffer[i].url);
+      int httpCode = http.GET();
+
+      if (httpCode > 0) {
+        Serial.printf("HTTP Code: %d\n", httpCode);
+        dataBuffer.erase(dataBuffer.begin() + i); // Удаляем отправленные данные
+        i--;
+      } else {
+        Serial.printf("Error on HTTP request: %s\n", http.errorToString(httpCode).c_str());
+        break; // Останавливаем попытки на ошибке
+      }
+      http.end();
+    }
+  }
 }
 
 // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
@@ -215,7 +267,6 @@ String getWiFiStatus() {
   }
 }
 
-// === МИГАНИЕ ЗЕЛЁНЫМ СВЕТОДИОДОМ ===
 void blinkGreen() {
   digitalWrite(ledGreenPin, LOW);
   delay(100);
