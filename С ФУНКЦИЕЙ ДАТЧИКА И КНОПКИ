@@ -15,13 +15,13 @@ const char* buttonGoogleScriptURL = "https://script.google.com/macros/s/AKfycbwo
 
 // Настройки для кнопки
 const int buttonPin = 16; // GPIO16
-const char* buttonColumn = "BB"; // Колонка для записи данных кнопки
+const char* buttonColumn = "BN"; // Колонка для записи данных кнопки
 
 // Настройки для датчика
 const int sensorPin = 4;       // GPIO4
 const int ledRedPin = 5;       // GPIO5
 const int ledGreenPin = 17;    // GPIO17
-const char* sensorSheetName = "PS15"; // Лист для записи данных датчика
+const char* sensorSheetName = "PS16"; // Лист для записи данных датчика
 
 // Переменные для кнопки
 bool buttonState = HIGH;
@@ -55,6 +55,7 @@ void sendSensorData(int sensorValue, int memoryStatus);
 String getWiFiStatus();
 void sendBufferedData();
 void blinkGreen();
+void handleRedLed(bool trigger, bool fastBlink);
 
 void setup() {
   Serial.begin(115200);
@@ -73,15 +74,12 @@ void setup() {
 
   // Подключение к Wi-Fi
   while (WiFi.status() != WL_CONNECTED) {
-    digitalWrite(ledRedPin, HIGH);
-    delay(250);  // В два раза быстрее (250 мс вместо 500 мс)
-    digitalWrite(ledRedPin, LOW);
-    delay(250);
+    handleRedLed(false, true);  // Быстрое мигание красного светодиода
     Serial.print(".");
   }
 
   digitalWrite(ledRedPin, LOW);
-  digitalWrite(ledGreenPin, HIGH);  // Зелёный светодиод при подключении к Wi-Fi
+  digitalWrite(ledGreenPin, HIGH);  // Зеленый светодиод при подключении к Wi-Fi
   Serial.println("");
   Serial.println("WiFi connected");
   Serial.print("IP address: ");
@@ -108,7 +106,8 @@ void loop() {
 
     if (buttonState == LOW) {  // Если кнопка нажата
       Serial.println("Button pressed!");
-      blinkGreen(); // Мигнуть зелёным светодиодом
+      handleRedLed(true, false); // Горит красный светодиод
+      blinkGreen();              // Мигнуть зеленым светодиодом
       sendButtonData();
     }
   }
@@ -127,18 +126,15 @@ void loop() {
     if (sensorState == LOW && (millis() - lastSendTime > sendDelay)) {
       Serial.println("Sensor triggered");
       lastSendTime = millis();
-      blinkGreen(); // Мигнуть зелёным светодиодом
-      sendSensorData(1, 0);  // Отправка данных
+      handleRedLed(true, false); // Горит красный светодиод
+      blinkGreen();              // Мигнуть зеленым светодиодом
+      sendSensorData(1, 0);      // Отправка данных
     }
   }
 
   // === ПРОВЕРКА СОСТОЯНИЯ WI-FI ===
   if (WiFi.status() != WL_CONNECTED) {
-    digitalWrite(ledGreenPin, LOW);
-    digitalWrite(ledRedPin, HIGH);
-    delay(250);  // В два раза быстрее (250 мс вместо 500 мс)
-    digitalWrite(ledRedPin, LOW);
-    delay(250);
+    handleRedLed(false, true);  // Быстрое мигание красного светодиода
     Serial.println("WiFi disconnected!");
   } else {
     digitalWrite(ledRedPin, LOW);
@@ -146,7 +142,24 @@ void loop() {
   }
 }
 
-// === ФУНКЦИИ КНОПКИ ===
+// === ФУНКЦИИ ДЛЯ КРАСНОГО СВЕТОДИОДА ===
+void handleRedLed(bool trigger, bool fastBlink) {
+  digitalWrite(ledGreenPin, LOW); // Выключаем зеленый светодиод
+  if (trigger) {
+    digitalWrite(ledRedPin, HIGH);
+    delay(4000); // Горит 4 секунды
+    digitalWrite(ledRedPin, LOW);
+  } else if (fastBlink) {
+    for (int i = 0; i < 8; i++) { // Мигание 4 раза за 1 секунду
+      digitalWrite(ledRedPin, HIGH);
+      delay(125);
+      digitalWrite(ledRedPin, LOW);
+      delay(125);
+    }
+  }
+}
+
+// === ФУНКЦИИ КНОПКИ И ДАТЧИКА ===
 void sendButtonData() {
   WiFiClientSecure client;
   client.setInsecure();
@@ -177,7 +190,6 @@ void sendButtonData() {
   }
 }
 
-// === ФУНКЦИИ ДАТЧИКА ===
 void sendSensorData(int sensorValue, int memoryStatus) {
   WiFiClientSecure client;
   client.setInsecure();
@@ -208,7 +220,6 @@ void sendSensorData(int sensorValue, int memoryStatus) {
   }
 }
 
-// === ОТПРАВКА ДАННЫХ ИЗ БУФЕРА ===
 void sendBufferedData() {
   if (WiFi.status() == WL_CONNECTED && !dataBuffer.empty()) {
     WiFiClientSecure client;
