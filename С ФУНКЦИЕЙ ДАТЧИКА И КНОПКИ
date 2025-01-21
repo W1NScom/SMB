@@ -6,22 +6,22 @@
 #include <vector>
 
 // Wi-Fi настройки
-const char* ssid = "TP-Link_515A";
-const char* password = "21857638";
+const char* ssid = "MikroTik-05B057";
+const char* password = "77777778";
 
 // URL для таблиц
-const char* sensorGoogleScriptURL = "https://script.google.com/macros/s/AKfycbxYNWKSfoAO6UJBgZEUSu1r-lvbFvAjqBrHRWuqCsut0Tn0czw8FfQNdsXMpWbq5vo1/exec";
+const char* sensorGoogleScriptURL = "https://script.google.com/macros/s/AKfycbzOxhEytI9NOeYtuCj9cH50L6O5Gs0JSxjMSHXBd2HTuAmKeD-8YXCjNAA1D3UxDmCx/exec";
 const char* buttonGoogleScriptURL = "https://script.google.com/macros/s/AKfycbwoQFseC5w0iiQ-XC6Afaq7DNAAOeLxQbgVdwJ_trLedQVGsK21RNMqTBIGaezW5GDX/exec";
 
 // Настройки для кнопки
 const int buttonPin = 16; // GPIO16
-const char* buttonColumn = "BN"; // Колонка для записи данных кнопки
+const char* buttonColumn = "BB"; // Колонка для записи данных кнопки
 
 // Настройки для датчика
 const int sensorPin = 4;       // GPIO4
 const int ledRedPin = 5;       // GPIO5
 const int ledGreenPin = 17;    // GPIO17
-const char* sensorSheetName = "PS16"; // Лист для записи данных датчика
+const char* sensorSheetName = "PS15"; // Лист для записи данных датчика
 
 // Переменные для кнопки
 bool buttonState = HIGH;
