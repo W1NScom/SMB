@@ -15,13 +15,13 @@ const char* buttonGoogleScriptURL = "https://script.google.com/macros/s/AKfycbwo
 
 // Настройки для кнопки
 const int buttonPin = 16; // GPIO16
-const char* buttonColumn = "BB"; // Колонка для записи данных кнопки
+const char* buttonColumn = "BF"; // Колонка для записи данных кнопки
 
 // Настройки для датчика
 const int sensorPin = 4;       // GPIO4
 const int ledRedPin = 5;       // GPIO5
 const int ledGreenPin = 17;    // GPIO17
-const char* sensorSheetName = "PS15"; // Лист для записи данных датчика
+const char* sensorSheetName = "PS14"; // Лист для записи данных датчика
 
 // Переменные для кнопки
 bool buttonState = HIGH;
@@ -36,6 +36,10 @@ unsigned long lastDebounceTimeSensor = 0;
 const unsigned long debounceDelaySensor = 50;
 unsigned long lastSendTime = 0;
 const unsigned long sendDelay = 3000;
+
+// Таймер для Wi-Fi подключения
+unsigned long wifiConnectStartTime = 0;
+const unsigned long wifiTimeout = 60000; // 1 минута
 
 // Буфер для хранения данных
 struct Data {
@@ -56,6 +60,7 @@ String getWiFiStatus();
 void sendBufferedData();
 void blinkGreen();
 void handleRedLed(bool trigger, bool fastBlink);
+void checkWiFiConnection();
 
 void setup() {
   Serial.begin(115200);
@@ -72,10 +77,14 @@ void setup() {
   digitalWrite(ledRedPin, LOW);
   digitalWrite(ledGreenPin, LOW);
 
-  // Подключение к Wi-Fi
+  // Таймер для Wi-Fi подключения
+  wifiConnectStartTime = millis();
+
+  // Подключение к Wi-Fi с проверкой тайм-аута
   while (WiFi.status() != WL_CONNECTED) {
     handleRedLed(false, true);  // Быстрое мигание красного светодиода
     Serial.print(".");
+    checkWiFiConnection();
   }
 
   digitalWrite(ledRedPin, LOW);
@@ -133,12 +142,18 @@ void loop() {
   }
 
   // === ПРОВЕРКА СОСТОЯНИЯ WI-FI ===
+  checkWiFiConnection();
+}
+
+// === ПРОВЕРКА И ПЕРЕЗАГРУЗКА ПРИ ОТСУТСТВИИ WI-FI ===
+void checkWiFiConnection() {
   if (WiFi.status() != WL_CONNECTED) {
-    handleRedLed(false, true);  // Быстрое мигание красного светодиода
-    Serial.println("WiFi disconnected!");
+    if (millis() - wifiConnectStartTime > wifiTimeout) {
+      Serial.println("WiFi connection timed out. Restarting...");
+      ESP.restart(); // Перезагрузка модуля
+    }
   } else {
-    digitalWrite(ledRedPin, LOW);
-    digitalWrite(ledGreenPin, HIGH);
+    wifiConnectStartTime = millis(); // Сбрасываем таймер, если Wi-Fi подключен
   }
 }
 
