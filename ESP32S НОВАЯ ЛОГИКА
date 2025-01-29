@@ -1,0 +1,367 @@
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+#include <vector>
+
+// ======================= ПАРАМЕТРЫ ДЛЯ ДАТЧИКА ======================
+// Какой лист используем (например, "PS2")?
+String sensorSheetName = "PS2"; 
+
+// ======================= ПАРАМЕТРЫ ДЛЯ КНОПКИ =======================
+// В какую колонку пишем кнопку (например, "F")?
+String buttonColumn = "F";      
+
+// ======================= ПАРАМЕТРЫ ДЛЯ СТАТУСА =====================
+// В какую ячейку пишем статус (например, "C5")?
+String statusCell = "C5";       
+
+// ============== URLs для трех скриптов Google Apps Script ==========
+const char* sensorGoogleScriptURL = "https://script.google.com/macros/s/AKfycbxObR_o3pk2vH90iDRUgfoi7q3sWApeloPwc12alCfYVCgZJuIiYJ8tqterPBIed0f4fg/exec";
+// 2) КНОПКА
+const char* buttonGoogleScriptURL = "https://script.google.com/macros/s/AKfycbyMtfjsfL26rcJsiVjRlPUr87bjfsanjWvYczTdjcL_jAxi0cGU22XPgCp16ZvKm0rd/exec";
+// 3) СТАТУС
+const char* statusGoogleScriptURL = "https://script.google.com/macros/s/AKfycbwfD0Sx_s_4FjsVGtI9Eh3GhH3plJVN6ChgJOWF_KpGVI1gn3sVosSyHT9oPbjADJBj/exec";
+// ===================== Wi-Fi настройки ==============================
+const char* ssid = "TP-Link_515A";
+const char* password = "21857638";
+
+unsigned long wifiConnectStartTime = 0;
+const unsigned long wifiTimeout = 60000; // 1 минута (в мс)
+
+// ===================== ПИНЫ КНОПКИ / ДАТЧИКА ========================
+const int buttonPin = 16; 
+const int sensorPin = 4;  
+
+// ===================== ПИНЫ СВЕТОДИОДОВ ============================
+const int ledRedPin = 5;
+const int ledGreenPin = 17;
+
+// ===================== ДРЕБЕЗГ КНОПКИ / ДАТЧИКА ====================
+bool buttonState = HIGH;
+bool lastButtonState = HIGH;
+unsigned long lastDebounceTimeButton = 0;
+const unsigned long debounceDelayButton = 50;
+
+bool sensorState = HIGH;
+bool sensorPrevState = HIGH;
+unsigned long lastDebounceTimeSensor = 0;
+const unsigned long debounceDelaySensor = 50;
+
+// ===================== СВЕТОДИОДЫ / СОБЫТИЯ ========================
+bool eventActive = false;          
+unsigned long eventStartTime = 0;  
+const unsigned long EVENT_DURATION = 3000; // красный на 3 секунды
+
+// "быстрое мигание" красным, когда нет Wi-Fi
+unsigned long blinkInterval = 125;  
+unsigned long lastBlinkTime = 0;    
+bool blinkState = false;           
+
+// ===================== БУФЕР НЕОТПРАВЛЕННЫХ ЗАПРОСОВ ===============
+struct Data {
+  String url;
+};
+std::vector<Data> dataBuffer;
+
+// ===================== NTPClient (при необходимости) ===============
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 3600 * 3); // GMT+3
+
+// ===================== СЧЁТЧИК СРАБАТЫВАНИЙ ДАТЧИКА ================
+int sensorTriggerCount = 0;  // За 1 минуту
+
+// ===================== ТАЙМЕР ДЛЯ ОТПРАВКИ РАЗ В МИНУТУ ============
+unsigned long lastBatchTime = 0;
+const unsigned long batchInterval = 60000; // 1 минута
+
+// -------------------------------------------------------------------
+//  ФУНКЦИЯ, возвращающая wifiStatus ("1".."6")
+// -------------------------------------------------------------------
+String getWiFiStatus() {
+  if (WiFi.status() != WL_CONNECTED) {
+    return "6"; // Нет соединения
+  }
+  int rssi = WiFi.RSSI();
+  if (rssi >= -50) return "1"; // Отличный сигнал
+  if (rssi >= -60) return "2"; // Хороший
+  if (rssi >= -70) return "3"; // Средний
+  if (rssi >= -80) return "4"; // Плохой
+  return "5"; // Очень плохой
+}
+
+// ================ setup() ============================
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(buttonPin, INPUT_PULLUP);
+  pinMode(sensorPin, INPUT);
+  pinMode(ledRedPin, OUTPUT);
+  pinMode(ledGreenPin, OUTPUT);
+  digitalWrite(ledRedPin, LOW);
+  digitalWrite(ledGreenPin, LOW);
+
+  // Подключение к Wi-Fi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+
+  wifiConnectStartTime = millis();
+  while (WiFi.status() != WL_CONNECTED) {
+    handleLedIndication(); 
+    if (millis() - wifiConnectStartTime > wifiTimeout) {
+      Serial.println("WiFi connect timed out. Restarting...");
+      ESP.restart();
+    }
+  }
+  Serial.println("WiFi connected, IP: " + WiFi.localIP().toString());
+  digitalWrite(ledGreenPin, HIGH);
+
+  timeClient.begin();
+
+  // Инициализируем таймер для «раз в минуту»
+  lastBatchTime = millis();
+}
+
+// ================ loop() ============================
+void loop() {
+  timeClient.update(); // при наличии сети обновим время
+
+  // 1) Обработка кнопки
+  int buttonReading = digitalRead(buttonPin);
+  if (buttonReading != lastButtonState) {
+    lastDebounceTimeButton = millis();
+    lastButtonState = buttonReading;
+  }
+  if ((millis() - lastDebounceTimeButton > debounceDelayButton) && (buttonReading != buttonState)) {
+    buttonState = buttonReading;
+    if (buttonState == LOW) {
+      // Кнопка нажата
+      Serial.println("Button pressed!");
+      sendButtonData();   // отправка "сразу"
+      activateRedEvent(); // красный LED на 3 секунды
+    }
+  }
+
+  // 2) Обработка датчика (только инкремент счётчика!)
+  int sensorReading = digitalRead(sensorPin);
+  if (sensorReading != sensorPrevState) {
+    lastDebounceTimeSensor = millis();
+    sensorPrevState = sensorReading;
+  }
+  if ((millis() - lastDebounceTimeSensor > debounceDelaySensor) && (sensorReading != sensorState)) {
+    sensorState = sensorReading;
+    if (sensorState == LOW) {
+      // Датчик сработал
+      sensorTriggerCount++;  // +1 к счётчику
+      Serial.println("Sensor triggered, count=" + String(sensorTriggerCount));
+
+      // Визуальная индикация (красный на 3 с) — если хотим видеть каждое срабатывание
+      activateRedEvent();
+    }
+  }
+
+  // 3) Каждую итерацию проверяем, не пора ли отправить «пакет» датчика
+  unsigned long now = millis();
+  if (now - lastBatchTime >= batchInterval) {
+    // Прошла 1 минута
+    if (sensorTriggerCount > 0) {
+      // Отправляем одно число — сколько сработок было
+      sendSensorBatchData(sensorTriggerCount);
+      // Обнуляем на следующую минуту
+      sensorTriggerCount = 0;
+    }
+    lastBatchTime = now;
+  }
+
+  // 4) Проверяем Wi-Fi
+  checkWiFiConnection();
+
+  // 5) Светодиоды
+  handleLedIndication();
+
+  // 6) Отправляем всё, что в буфере
+  sendBufferedData();
+}
+
+// -------------------------------------------------------------------
+//  Отправляем «батч» датчика: button=<кол-во за минуту>
+// -------------------------------------------------------------------
+void sendSensorBatchData(int count) {
+  String wifiStatusStr = getWiFiStatus();
+  // Пример: ?sheet=PS2&button=<count>&wifiStatus=...
+  // script ждет 'sheet', 'button', 'wifiStatus'
+  String url = String(sensorGoogleScriptURL) +
+               "?sheet=" + sensorSheetName +
+               "&button=" + String(count) +
+               "&wifiStatus=" + wifiStatusStr;
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  if (WiFi.status() == WL_CONNECTED) {
+    http.begin(client, url);
+    int httpCode = http.GET();
+    if (httpCode <= 0) {
+      Serial.printf("SensorBatch error: %s\n", http.errorToString(httpCode).c_str());
+      dataBuffer.push_back({url});
+    } else {
+      Serial.printf("SensorBatch sent OK, code: %d\n", httpCode);
+    }
+    http.end();
+  } else {
+    dataBuffer.push_back({url});
+  }
+}
+
+// -------------------------------------------------------------------
+//  Отправка кнопки (по нажатию)
+// -------------------------------------------------------------------
+void sendButtonData() {
+  String url = String(buttonGoogleScriptURL) + "?column=" + buttonColumn;
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  if (WiFi.status() == WL_CONNECTED) {
+    http.begin(client, url);
+    int httpCode = http.GET();
+    if (httpCode <= 0) {
+      Serial.printf("ButtonData error: %s\n", http.errorToString(httpCode).c_str());
+      dataBuffer.push_back({url});
+    }
+    http.end();
+  } else {
+    dataBuffer.push_back({url});
+  }
+}
+
+// -------------------------------------------------------------------
+//  Отправка статуса ON/OFF (не трогаем логику, если не нужно)
+// -------------------------------------------------------------------
+void sendStatusData(bool isOn) {
+  String val = isOn ? "ON" : "OFF";
+  String url = String(statusGoogleScriptURL) + "?cell=" + statusCell + "&value=" + val;
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  if (WiFi.status() == WL_CONNECTED) {
+    http.begin(client, url);
+    int httpCode = http.GET();
+    if (httpCode <= 0) {
+      Serial.printf("StatusData error: %s\n", http.errorToString(httpCode).c_str());
+      dataBuffer.push_back({url});
+    }
+    http.end();
+  } else {
+    dataBuffer.push_back({url});
+  }
+}
+
+// -------------------------------------------------------------------
+//  Повторная отправка буфера (если не получилось в прошлый раз)
+// -------------------------------------------------------------------
+void sendBufferedData() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (dataBuffer.empty()) return;
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+
+  for (size_t i = 0; i < dataBuffer.size(); i++) {
+    String url = dataBuffer[i].url;
+    Serial.println("Resending: " + url);
+
+    http.begin(client, url);
+    int httpCode = http.GET();
+    if (httpCode > 0) {
+      Serial.printf("HTTP Code: %d\n", httpCode);
+      // Успешно => убираем запрос из буфера
+      dataBuffer.erase(dataBuffer.begin() + i);
+      i--;
+    } else {
+      Serial.printf("Error on resend: %s\n", http.errorToString(httpCode).c_str());
+      http.end();
+      // Остановим цикл, чтобы при следующем проходе снова попробовать
+      break;
+    }
+    http.end();
+  }
+}
+
+// -------------------------------------------------------------------
+//  Проверка Wi-Fi
+// -------------------------------------------------------------------
+void checkWiFiConnection() {
+  if (WiFi.status() != WL_CONNECTED) {
+    // ждем до таймаута
+    if (millis() - wifiConnectStartTime > wifiTimeout) {
+      Serial.println("WiFi reconnection timed out. Restarting...");
+      ESP.restart();
+    }
+  } else {
+    // Сброс таймера
+    wifiConnectStartTime = millis();
+  }
+}
+
+// -------------------------------------------------------------------
+//  Светодиоды
+// -------------------------------------------------------------------
+void handleLedIndication() {
+  // Если идёт 3-секундный красный
+  if (eventActive) {
+    if (millis() - eventStartTime < EVENT_DURATION) {
+      digitalWrite(ledRedPin, HIGH);
+      digitalWrite(ledGreenPin, LOW);
+    } else {
+      eventActive = false;
+      restoreWiFiLedState();
+    }
+    return;
+  }
+
+  // Иначе проверяем статус Wi-Fi
+  if (WiFi.status() != WL_CONNECTED) {
+    // Быстро мигаем красным
+    unsigned long now = millis();
+    if (now - lastBlinkTime >= blinkInterval) {
+      lastBlinkTime = now;
+      blinkState = !blinkState;
+      digitalWrite(ledRedPin, blinkState ? HIGH : LOW);
+      digitalWrite(ledGreenPin, LOW);
+    }
+  } else {
+    // Сеть есть -> зелёный
+    digitalWrite(ledGreenPin, HIGH);
+    digitalWrite(ledRedPin, LOW);
+  }
+}
+
+// -------------------------------------------------------------------
+//  Запуск "3-секундного" красного
+// -------------------------------------------------------------------
+void activateRedEvent() {
+  eventActive = true;
+  eventStartTime = millis();
+  digitalWrite(ledGreenPin, LOW);
+  digitalWrite(ledRedPin, HIGH);
+}
+
+// -------------------------------------------------------------------
+//  Восстановление Wi-Fi-индикатора
+// -------------------------------------------------------------------
+void restoreWiFiLedState() {
+  if (WiFi.status() == WL_CONNECTED) {
+    digitalWrite(ledGreenPin, HIGH);
+    digitalWrite(ledRedPin, LOW);
+  } else {
+    lastBlinkTime = millis();
+    blinkState = false;
+    digitalWrite(ledGreenPin, LOW);
+    digitalWrite(ledRedPin, LOW);
+  }
+}
