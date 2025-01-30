@@ -11,7 +11,7 @@ String sensorSheetName = "PS2";
 
 // ======================= ПАРАМЕТРЫ ДЛЯ КНОПКИ =======================
 // В какую колонку пишем кнопку (например, "F")?
-String buttonColumn = "F";      
+String buttonColumn = "J";      
 
 // ======================= ПАРАМЕТРЫ ДЛЯ СТАТУСА =====================
 // В какую ячейку пишем статус (например, "C5")?
@@ -20,7 +20,7 @@ String statusCell = "C5";
 // ============== URLs для трех скриптов Google Apps Script ==========
 const char* sensorGoogleScriptURL = "https://script.google.com/macros/s/AKfycbxObR_o3pk2vH90iDRUgfoi7q3sWApeloPwc12alCfYVCgZJuIiYJ8tqterPBIed0f4fg/exec";
 // 2) КНОПКА
-const char* buttonGoogleScriptURL = "https://script.google.com/macros/s/AKfycbyMtfjsfL26rcJsiVjRlPUr87bjfsanjWvYczTdjcL_jAxi0cGU22XPgCp16ZvKm0rd/exec";
+const char* buttonGoogleScriptURL = "https://script.google.com/macros/s/AKfycbxwStfnf_Ts2EZ8S7llITqvwOWF5yVPcq5rt5eYIv05KNN7z55cCTYblBAuevmrxUpS/exec";
 // 3) СТАТУС
 const char* statusGoogleScriptURL = "https://script.google.com/macros/s/AKfycbwfD0Sx_s_4FjsVGtI9Eh3GhH3plJVN6ChgJOWF_KpGVI1gn3sVosSyHT9oPbjADJBj/exec";
 // ===================== Wi-Fi настройки ==============================
