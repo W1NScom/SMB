@@ -7,25 +7,25 @@
 
 // ======================= ПАРАМЕТРЫ ДЛЯ ДАТЧИКА ======================
 // Какой лист используем (например, "PS2")?
-String sensorSheetName = "PS2"; 
+String sensorSheetName = "PS16"; 
 
 // ======================= ПАРАМЕТРЫ ДЛЯ КНОПКИ =======================
 // В какую колонку пишем кнопку (например, "F")?
-String buttonColumn = "J";      
+String buttonColumn = "BN";      
 
 // ======================= ПАРАМЕТРЫ ДЛЯ СТАТУСА =====================
 // В какую ячейку пишем статус (например, "C5")?
-String statusCell = "C5";       
+String statusCell = "C6";       
 
 // ============== URLs для трех скриптов Google Apps Script ==========
-const char* sensorGoogleScriptURL = "https://script.google.com/macros/s/AKfycbxObR_o3pk2vH90iDRUgfoi7q3sWApeloPwc12alCfYVCgZJuIiYJ8tqterPBIed0f4fg/exec";
+const char* sensorGoogleScriptURL = "https://script.google.com/macros/s/AKfycbydVk-AGDk_IQYgn3ktwsZ2G5ETZR9DeztbUxFdPvpE6bd_B0QPp79yB72KENqsCNwt/exec";
 // 2) КНОПКА
 const char* buttonGoogleScriptURL = "https://script.google.com/macros/s/AKfycbxwStfnf_Ts2EZ8S7llITqvwOWF5yVPcq5rt5eYIv05KNN7z55cCTYblBAuevmrxUpS/exec";
 // 3) СТАТУС
 const char* statusGoogleScriptURL = "https://script.google.com/macros/s/AKfycbwfD0Sx_s_4FjsVGtI9Eh3GhH3plJVN6ChgJOWF_KpGVI1gn3sVosSyHT9oPbjADJBj/exec";
 // ===================== Wi-Fi настройки ==============================
-const char* ssid = "TP-Link_515A";
-const char* password = "21857638";
+const char* ssid = "MikroTik-05B057";
+const char* password = "77777778";
 
 unsigned long wifiConnectStartTime = 0;
 const unsigned long wifiTimeout = 60000; // 1 минута (в мс)
